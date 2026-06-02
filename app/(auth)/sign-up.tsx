@@ -53,7 +53,11 @@ export default function SignUpScreen() {
     if (!fullName.trim()) e.fullName = 'Full name is required';
     if (!email.trim()) e.email = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(email)) e.email = 'Enter a valid email address';
-    if (password.length < 8) e.password = 'Password must be at least 8 characters';
+    if (password.length < 8) {
+      e.password = 'Password must be at least 8 characters';
+    } else if (!/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+      e.password = 'Password must include at least one uppercase letter and one number';
+    }
     setErrors(e);
     return !e.fullName && !e.email && !e.password;
   }

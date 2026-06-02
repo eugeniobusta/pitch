@@ -38,7 +38,9 @@ export default function PitchVideoScreen() {
     if (!videoUri || !session?.user) return;
     setUploading(true);
     try {
-      const ext = videoUri.split('.').pop() ?? 'mp4';
+      const allowedVideoExts = new Set(['mp4', 'mov', 'webm']);
+      const rawExt = videoUri.split('.').pop()?.toLowerCase() ?? 'mp4';
+      const ext = allowedVideoExts.has(rawExt) ? rawExt : 'mp4';
       const path = `${session.user.id}/pitch.${ext}`;
       const response = await fetch(videoUri);
       const blob = await response.blob();

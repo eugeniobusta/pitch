@@ -33,6 +33,9 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Supabase temp files (contain project ref — never commit)
+supabase/.temp/
+
 # typescript
 *.tsbuildinfo
 

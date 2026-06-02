@@ -1,8 +1,9 @@
 import React from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  Linking, StyleSheet,
+  StyleSheet,
 } from 'react-native';
+import { safeOpenUrl } from '@/lib/safeUrl';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -276,7 +277,7 @@ export default function StartupDetailModal() {
               <SectionLabel label="LINKS" />
               {startup.website && (
                 <TouchableOpacity
-                  onPress={() => Linking.openURL(startup.website!)}
+                  onPress={() => safeOpenUrl(startup.website)}
                   style={s.linkRow}
                 >
                   <Ionicons name="globe-outline" size={16} color="#2E4820" />
@@ -287,7 +288,7 @@ export default function StartupDetailModal() {
               )}
               {startup.linkedin_url && (
                 <TouchableOpacity
-                  onPress={() => Linking.openURL(startup.linkedin_url!)}
+                  onPress={() => safeOpenUrl(startup.linkedin_url)}
                   style={s.linkRow}
                 >
                   <Ionicons name="logo-linkedin" size={16} color="#2E4820" />

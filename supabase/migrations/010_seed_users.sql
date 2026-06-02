@@ -1,6 +1,10 @@
 -- ============================================================
 -- SEED: 10 realistic fake users (5 investors + 5 founders)
 -- All passwords: Test1234!
+--
+-- WARNING: This file is for LOCAL DEVELOPMENT ONLY.
+-- It MUST NOT be applied to a production database.
+-- Canonical seed data going forward lives in supabase/seed.sql.
 -- ============================================================
 SET search_path TO extensions, auth, public;
 

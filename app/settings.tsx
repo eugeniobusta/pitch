@@ -102,9 +102,11 @@ export default function SettingsScreen() {
   const [notifUpdates, setNotifUpdates] = useState(true);
 
   function openUrl(url: string) {
-    Linking.openURL(url).catch(() =>
-      Alert.alert('Could not open link')
-    );
+    if (!url.startsWith('https://') && !url.startsWith('http://') && !url.startsWith('mailto:')) {
+      Alert.alert('Invalid link');
+      return;
+    }
+    Linking.openURL(url).catch(() => Alert.alert('Could not open link'));
   }
 
   return (

@@ -1,8 +1,9 @@
 import React from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  Linking, StyleSheet,
+  StyleSheet,
 } from 'react-native';
+import { safeOpenUrl } from '@/lib/safeUrl';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -215,7 +216,7 @@ export default function InvestorDetailModal() {
             <View style={s.section}>
               <SectionLabel label="LINKS" />
               <TouchableOpacity
-                onPress={() => Linking.openURL(investor.linkedin_url!)}
+                onPress={() => safeOpenUrl(investor.linkedin_url)}
                 style={s.linkRow}
               >
                 <Ionicons name="logo-linkedin" size={16} color="#2E4820" />

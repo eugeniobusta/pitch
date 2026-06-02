@@ -94,10 +94,13 @@ function ChipRow<T extends string>({
   );
 }
 
+const ALLOWED_IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'webp', 'heic']);
+
 async function uploadImage(uri: string, bucket: string, path: string): Promise<string> {
   const res  = await fetch(uri);
   const blob = await res.blob();
-  const ext  = uri.split('.').pop()?.toLowerCase() ?? 'jpg';
+  const rawExt = uri.split('.').pop()?.toLowerCase() ?? 'jpg';
+  const ext = ALLOWED_IMAGE_EXTS.has(rawExt) ? rawExt : 'jpg';
   const { error } = await supabase.storage
     .from(bucket)
     .upload(path, blob, { upsert: true, contentType: `image/${ext}` });
