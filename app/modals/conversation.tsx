@@ -68,7 +68,7 @@ export default function ConversationScreen() {
       return data ?? [];
     },
     enabled: !!id,
-    refetchInterval: 5000,
+    refetchInterval: 15000,
   });
 
   const sendMutation = useMutation({
@@ -87,6 +87,22 @@ export default function ConversationScreen() {
       qc.invalidateQueries({ queryKey: ['conversations'] });
     },
   });
+
+  useEffect(() => {
+    if (!id) return;
+    const channel = supabase
+      .channel(`messages-${id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${id}`,
+      }, () => {
+        qc.invalidateQueries({ queryKey: ['messages', id] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [id]);
 
   useEffect(() => {
     if (messages.length) {

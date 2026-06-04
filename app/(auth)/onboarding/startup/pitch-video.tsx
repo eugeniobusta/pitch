@@ -73,6 +73,11 @@ export default function PitchVideoScreen() {
     await supabase.from('profiles').update({ is_onboarded: true }).eq('id', session.user.id);
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
     if (profile) setProfile(profile as any);
+    Alert.alert(
+      'Profile Inactive',
+      "Your profile is saved, but won't appear in the investor feed until you upload a pitch video. You can add one anytime from your Profile tab.",
+      [{ text: 'Got it', style: 'default' }],
+    );
   }
 
   return (

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, TouchableOpacity, ScrollView, Switch,
   StyleSheet, Linking, Alert,
@@ -101,6 +102,25 @@ export default function SettingsScreen() {
   const [notifViews,   setNotifViews]   = useState(false);
   const [notifUpdates, setNotifUpdates] = useState(true);
 
+  useEffect(() => {
+    AsyncStorage.getItem('notif_prefs').then((raw) => {
+      if (!raw) return;
+      try {
+        const p = JSON.parse(raw);
+        if (p.connections != null) setNotifConn(p.connections);
+        if (p.messages   != null) setNotifMsg(p.messages);
+        if (p.views      != null) setNotifViews(p.views);
+        if (p.updates    != null) setNotifUpdates(p.updates);
+      } catch {}
+    });
+  }, []);
+
+  async function savePref(key: string, value: boolean) {
+    const raw = await AsyncStorage.getItem('notif_prefs');
+    const prefs = raw ? JSON.parse(raw) : {};
+    await AsyncStorage.setItem('notif_prefs', JSON.stringify({ ...prefs, [key]: value }));
+  }
+
   function openUrl(url: string) {
     if (!url.startsWith('https://') && !url.startsWith('http://') && !url.startsWith('mailto:')) {
       Alert.alert('Invalid link');
@@ -143,19 +163,19 @@ export default function SettingsScreen() {
         <Text style={styles.groupLabel}>NOTIFICATIONS</Text>
         <Row icon="people-outline"     iconColor="#6DB882" iconBg="#E8F5EE" title="Connection requests"
           desc="When someone requests to connect"
-          right={<Switch value={notifConn} onValueChange={setNotifConn} trackColor={{ false: colors.border, true: '#6DB882' }} thumbColor="#FFF" ios_backgroundColor={colors.border} />}
+          right={<Switch value={notifConn} onValueChange={(v) => { setNotifConn(v); savePref('connections', v); }} trackColor={{ false: colors.border, true: '#6DB882' }} thumbColor="#FFF" ios_backgroundColor={colors.border} />}
           onPress={undefined} styles={styles} colors={colors} />
         <Row icon="chatbubble-outline" iconColor="#C4944A" iconBg="#FDF3E3" title="New messages"
           desc="When you receive a new message"
-          right={<Switch value={notifMsg} onValueChange={setNotifMsg} trackColor={{ false: colors.border, true: '#6DB882' }} thumbColor="#FFF" ios_backgroundColor={colors.border} />}
+          right={<Switch value={notifMsg} onValueChange={(v) => { setNotifMsg(v); savePref('messages', v); }} trackColor={{ false: colors.border, true: '#6DB882' }} thumbColor="#FFF" ios_backgroundColor={colors.border} />}
           onPress={undefined} styles={styles} colors={colors} />
         <Row icon="eye-outline"        iconColor="#8B5E3C" iconBg="#F5EDE5" title="Pitch views"
           desc="When investors view your pitch"
-          right={<Switch value={notifViews} onValueChange={setNotifViews} trackColor={{ false: colors.border, true: '#6DB882' }} thumbColor="#FFF" ios_backgroundColor={colors.border} />}
+          right={<Switch value={notifViews} onValueChange={(v) => { setNotifViews(v); savePref('views', v); }} trackColor={{ false: colors.border, true: '#6DB882' }} thumbColor="#FFF" ios_backgroundColor={colors.border} />}
           onPress={undefined} styles={styles} colors={colors} />
         <Row icon="megaphone-outline"  iconColor="#2E4820" iconBg="#E8F5EE" title="Product updates"
           desc="News and new features from Pitch"
-          right={<Switch value={notifUpdates} onValueChange={setNotifUpdates} trackColor={{ false: colors.border, true: '#6DB882' }} thumbColor="#FFF" ios_backgroundColor={colors.border} />}
+          right={<Switch value={notifUpdates} onValueChange={(v) => { setNotifUpdates(v); savePref('updates', v); }} trackColor={{ false: colors.border, true: '#6DB882' }} thumbColor="#FFF" ios_backgroundColor={colors.border} />}
           onPress={undefined} styles={styles} colors={colors} />
 
         {/* ── LEGAL ─────────────────────────────────────────────────── */}
@@ -173,6 +193,25 @@ export default function SettingsScreen() {
           onPress={() => openUrl('mailto:hello@pitch.app')} styles={styles} colors={colors} />
         <Row icon="star-outline"           iconColor="#C4944A" iconBg="#FDF3E3" title="Rate Pitch"
           onPress={() => Alert.alert('Thank you!', 'Rating will be available when the app is published.')} styles={styles} colors={colors} />
+
+        {/* ── SECURITY ──────────────────────────────────────────────── */}
+        <Text style={styles.groupLabel}>SECURITY & PRIVACY</Text>
+        <Row icon="shield-checkmark-outline" iconColor="#2E4820" iconBg="#E8F5EE"
+          title="Row-level security enabled"
+          desc="Your data is protected — you only see what you're authorized to see"
+          styles={styles} colors={colors} />
+        <Row icon="lock-closed-outline" iconColor="#6DB882" iconBg="#E8F5EE"
+          title="Email & tokens never shared"
+          desc="Your email address and device push token are private to you only"
+          styles={styles} colors={colors} />
+        <Row icon="eye-off-outline" iconColor="#8B5E3C" iconBg="#F5EDE5"
+          title="Messages are private"
+          desc="Only the two parties in a conversation can read its messages"
+          styles={styles} colors={colors} />
+        <Row icon="cloud-done-outline" iconColor="#C4944A" iconBg="#FDF3E3"
+          title="Encrypted in transit"
+          desc="All data is sent over TLS — never transmitted in plaintext"
+          styles={styles} colors={colors} />
 
         {/* ── ABOUT ─────────────────────────────────────────────────── */}
         <Text style={styles.groupLabel}>ABOUT</Text>

@@ -61,7 +61,7 @@ export default function StartupDetailModal() {
     queryFn: async () => {
       const { data } = await supabase
         .from('startup_profiles')
-        .select('*, profile:profiles(*)')
+        .select('*, profile:profiles(id, full_name, avatar_url)')
         .eq('profile_id', id)
         .single();
       return data;

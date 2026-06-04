@@ -239,7 +239,7 @@ export default function FeedScreen() {
       }
       const { data } = await supabase
         .from('startup_profiles')
-        .select('*, profile:profiles(*)')
+        .select('*, profile:profiles(id, full_name, avatar_url)')
         .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(20);

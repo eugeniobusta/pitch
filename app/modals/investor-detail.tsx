@@ -62,7 +62,7 @@ export default function InvestorDetailModal() {
     queryFn: async () => {
       const { data } = await supabase
         .from('investor_profiles')
-        .select('*, profile:profiles(*)')
+        .select('*, profile:profiles(id, full_name, avatar_url)')
         .eq('profile_id', id)
         .single();
       return data;

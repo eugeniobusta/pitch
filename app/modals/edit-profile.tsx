@@ -186,6 +186,25 @@ export default function EditProfileModal() {
 
   async function handleSave() {
     if (!profile) return;
+
+    const urlFields: { value: string; name: string }[] = [
+      { value: website.trim(), name: 'Website' },
+      ...(isStartup ? [
+        { value: spWebsite.trim(),   name: 'Startup website' },
+        { value: linkedinUrl.trim(), name: 'LinkedIn URL' },
+        { value: twitterUrl.trim(),  name: 'Twitter URL' },
+      ] : [
+        { value: ipLinkedin.trim(),  name: 'LinkedIn URL' },
+        { value: ipTwitter.trim(),   name: 'Twitter URL' },
+      ]),
+    ];
+    for (const { value, name } of urlFields) {
+      if (value && !value.startsWith('https://') && !value.startsWith('http://')) {
+        showToast(`${name} must start with http:// or https://`, 'error');
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       let avatarUrl  = profile.avatar_url;

@@ -330,6 +330,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 14,
     paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   editBtnText: {
     fontSize: 13,
