@@ -57,6 +57,7 @@ export interface StartupProfile {
   is_active: boolean;
   views_count: number;
   connections_count: number;
+  likes_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -123,6 +124,7 @@ export interface FeedItem extends StartupProfile {
   profile: Profile;
   is_connected: boolean;
   connection_status: ConnectionStatus | null;
+  is_liked: boolean;
 }
 
 export type Database = {

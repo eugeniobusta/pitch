@@ -23,6 +23,12 @@ function formatCurrency(n: number) {
   return `$${n}`;
 }
 
+function formatCount(n: number) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return `${n}`;
+}
+
 function SectionLabel({ label }: { label: string }) {
   return <Text style={s.sectionLabel}>{label}</Text>;
 }
@@ -83,6 +89,22 @@ export default function StartupDetailModal() {
     enabled: !!session && profile?.account_type === 'investor',
   });
 
+  const { data: likeStatus } = useQuery({
+    queryKey: ['like-status', id, session?.user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('startup_likes')
+        .select('id')
+        .eq('investor_id', session!.user.id)
+        .eq('startup_id', id!)
+        .maybeSingle();
+      return { is_liked: !!data };
+    },
+    enabled: !!session && !!id && profile?.account_type === 'investor',
+  });
+
+  const isLiked = likeStatus?.is_liked ?? false;
+
   const connectMutation = useMutation({
     mutationFn: async () => {
       const { error } = await supabase.from('connections').insert({
@@ -101,13 +123,36 @@ export default function StartupDetailModal() {
     onError: (e: any) => showToast(e.message, 'error'),
   });
 
+  const likeMutation = useMutation({
+    mutationFn: async () => {
+      if (isLiked) {
+        const { error } = await supabase.from('startup_likes')
+          .delete()
+          .eq('investor_id', session!.user.id)
+          .eq('startup_id', id!);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('startup_likes')
+          .insert({ investor_id: session!.user.id, startup_id: id });
+        if (error) throw error;
+      }
+    },
+    onMutate: () => haptic.light(),
+    onSuccess: () => {
+      showToast(isLiked ? 'Removed from saved' : 'Startup saved!', isLiked ? 'info' : 'success');
+      queryClient.invalidateQueries({ queryKey: ['like-status', id] });
+      queryClient.invalidateQueries({ queryKey: ['startup', id] });
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+    },
+    onError: (e: any) => showToast(e.message, 'error'),
+  });
+
   const [dmLoading, setDmLoading] = React.useState(false);
 
   async function handleDirectMessage() {
     if (!session?.user || !startup) return;
     setDmLoading(true);
     try {
-      // Check for an existing direct conversation with this startup
       const { data: existing } = await supabase
         .from('conversations')
         .select('id')
@@ -121,7 +166,6 @@ export default function StartupDetailModal() {
         return;
       }
 
-      // Create a new direct conversation
       const { data: newConv, error } = await supabase
         .from('conversations')
         .insert({ investor_id: session.user.id, startup_id: startup.profile_id })
@@ -146,7 +190,6 @@ export default function StartupDetailModal() {
   if (!startup) return null;
 
   const isInvestor = profile?.account_type === 'investor';
-  const canConnect = isInvestor && !connection;
   const isOwner = session?.user?.id === startup.profile_id;
 
   const hasTraction = startup.mrr || startup.arr || startup.users_count || startup.growth_rate;
@@ -198,6 +241,24 @@ export default function StartupDetailModal() {
             {startup.founded_year && (
               <Badge label={`Est. ${startup.founded_year}`} variant="muted" />
             )}
+          </View>
+
+          {/* Stats row */}
+          <View style={s.statsRow}>
+            <View style={s.statItem}>
+              <Text style={s.statValue}>{formatCount(startup.connections_count ?? 0)}</Text>
+              <Text style={s.statLabel}>Connections</Text>
+            </View>
+            <View style={s.statSep} />
+            <View style={s.statItem}>
+              <Text style={s.statValue}>{formatCount(startup.views_count ?? 0)}</Text>
+              <Text style={s.statLabel}>Views</Text>
+            </View>
+            <View style={s.statSep} />
+            <View style={s.statItem}>
+              <Text style={[s.statValue, { color: '#E74C3C' }]}>{formatCount(startup.likes_count ?? 0)}</Text>
+              <Text style={s.statLabel}>Saves</Text>
+            </View>
           </View>
         </View>
 
@@ -304,38 +365,55 @@ export default function StartupDetailModal() {
       {/* CTA for investors */}
       {isInvestor && !isOwner && (
         <View style={[s.ctaBar, { paddingBottom: insets.bottom + 16 }]}>
-          {startup.allow_direct_messages ? (
-            /* Startup allows direct messages — skip connection request */
-            <Button
-              label="Send a Message"
-              onPress={handleDirectMessage}
-              loading={dmLoading}
-              variant="primary"
-              size="lg"
-              icon={<Ionicons name="chatbubble-outline" size={16} color="white" />}
-            />
-          ) : connection?.status === 'accepted' ? (
-            <Button
-              label="Message"
-              onPress={() => router.push('/(tabs)/messages')}
-              variant="primary"
-              size="lg"
-              icon={<Ionicons name="chatbubble-outline" size={16} color="white" />}
-            />
-          ) : connection?.status === 'pending' ? (
-            <View style={s.pendingRow}>
-              <Ionicons name="time-outline" size={18} color="#C4944A" />
-              <Text style={s.pendingText}>Connection request pending</Text>
+          <View style={s.ctaRow}>
+            {/* Save / Like button */}
+            <TouchableOpacity
+              style={[s.saveBtn, isLiked && s.saveBtnActive]}
+              onPress={() => likeMutation.mutate()}
+              disabled={likeMutation.isPending}
+            >
+              <Ionicons
+                name={isLiked ? 'heart' : 'heart-outline'}
+                size={18}
+                color={isLiked ? '#E74C3C' : '#2E4820'}
+              />
+            </TouchableOpacity>
+
+            {/* Primary action */}
+            <View style={{ flex: 1 }}>
+              {startup.allow_direct_messages ? (
+                <Button
+                  label="Send a Message"
+                  onPress={handleDirectMessage}
+                  loading={dmLoading}
+                  variant="primary"
+                  size="lg"
+                  icon={<Ionicons name="chatbubble-outline" size={16} color="white" />}
+                />
+              ) : connection?.status === 'accepted' ? (
+                <Button
+                  label="Message"
+                  onPress={() => router.push('/(tabs)/messages')}
+                  variant="primary"
+                  size="lg"
+                  icon={<Ionicons name="chatbubble-outline" size={16} color="white" />}
+                />
+              ) : connection?.status === 'pending' ? (
+                <View style={s.pendingRow}>
+                  <Ionicons name="time-outline" size={18} color="#C4944A" />
+                  <Text style={s.pendingText}>Connection request pending</Text>
+                </View>
+              ) : (
+                <Button
+                  label="Request Connection"
+                  onPress={() => connectMutation.mutate()}
+                  loading={connectMutation.isPending}
+                  variant="secondary"
+                  size="lg"
+                />
+              )}
             </View>
-          ) : (
-            <Button
-              label="Request Connection"
-              onPress={() => connectMutation.mutate()}
-              loading={connectMutation.isPending}
-              variant="secondary"
-              size="lg"
-            />
-          )}
+          </View>
         </View>
       )}
     </View>
@@ -417,6 +495,35 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
+    marginBottom: 14,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8F8F6',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginTop: 2,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1A1A1A',
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#AAAAAA',
+  },
+  statSep: {
+    width: 1,
+    height: 28,
+    backgroundColor: '#EBEBEB',
   },
   divider: {
     height: 1,
@@ -501,6 +608,25 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(247,247,245,0.97)',
     borderTopWidth: 1,
     borderTopColor: '#EBEBEB',
+  },
+  ctaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  saveBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D0D0D0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  saveBtnActive: {
+    borderColor: '#E74C3C',
+    backgroundColor: '#FFF5F5',
   },
   pendingRow: {
     flexDirection: 'row',

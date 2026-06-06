@@ -106,13 +106,23 @@ export default function MessagesScreen() {
               ?.slice()
               .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 
+            // Profile navigation: investor → startup profile, startup → investor profile
+            const profileId = isInvestor ? item.startup_id : item.investor_id;
+            const profilePath = isInvestor ? '/modals/startup-detail' : '/modals/investor-detail';
+
             return (
               <TouchableOpacity
                 onPress={() => router.push({ pathname: '/modals/conversation', params: { id: item.id } } as any)}
                 style={styles.row}
                 activeOpacity={0.7}
               >
-                <Avatar uri={otherAvatar} name={otherName} size={44} />
+                <TouchableOpacity
+                  onPress={() => profileId && router.push({ pathname: profilePath, params: { id: profileId } } as any)}
+                  activeOpacity={0.7}
+                  disabled={!profileId}
+                >
+                  <Avatar uri={otherAvatar} name={otherName} size={44} />
+                </TouchableOpacity>
                 <View style={styles.rowBody}>
                   <View style={styles.rowTop}>
                     <View style={styles.nameWrap}>

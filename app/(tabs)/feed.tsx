@@ -33,6 +33,9 @@ function FeedCard({ item, isActive, isMuted }: { item: FeedItem; isActive: boole
   const showToast = useUIStore((s) => s.showToast);
   const queryClient = useQueryClient();
   const [showInfo, setShowInfo] = useState(false);
+  const viewTrackedRef = useRef(false);
+
+  const isInvestor = profile?.account_type === 'investor';
 
   const player = useVideoPlayer(
     item.pitch_video_url ? { uri: item.pitch_video_url } : null,
@@ -57,6 +60,22 @@ function FeedCard({ item, isActive, isMuted }: { item: FeedItem; isActive: boole
     }
   }, [isActive]);
 
+  // Track pitch view after 3 seconds of watching (investors only, once per card per session)
+  React.useEffect(() => {
+    if (!isActive || viewTrackedRef.current || !isInvestor || !session?.user || !item.id) return;
+    const timer = setTimeout(async () => {
+      viewTrackedRef.current = true;
+      await supabase.from('pitch_views').insert({
+        startup_id: item.id,
+        viewer_id: session.user.id,
+      });
+      queryClient.setQueryData(['feed', session?.user?.id], (old: FeedItem[] | undefined) =>
+        old?.map(f => f.id === item.id ? { ...f, views_count: (f.views_count || 0) + 1 } : f)
+      );
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [isActive]);
+
   const connectMutation = useMutation({
     mutationFn: async () => {
       if (!session?.user || !item.id) return;
@@ -75,7 +94,33 @@ function FeedCard({ item, isActive, isMuted }: { item: FeedItem; isActive: boole
     onError: (e: any) => showToast(e.message, 'error'),
   });
 
-  const isInvestor = profile?.account_type === 'investor';
+  const likeMutation = useMutation({
+    mutationFn: async () => {
+      if (item.is_liked) {
+        const { error } = await supabase.from('startup_likes')
+          .delete()
+          .eq('investor_id', session!.user.id)
+          .eq('startup_id', item.profile_id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('startup_likes')
+          .insert({ investor_id: session!.user.id, startup_id: item.profile_id });
+        if (error) throw error;
+      }
+    },
+    onMutate: () => {
+      haptic.light();
+      // Optimistic update
+      queryClient.setQueryData(['feed', session?.user?.id], (old: FeedItem[] | undefined) =>
+        old?.map(f => f.id === item.id
+          ? { ...f, is_liked: !item.is_liked, likes_count: (f.likes_count || 0) + (item.is_liked ? -1 : 1) }
+          : f
+        )
+      );
+    },
+    onError: () => queryClient.invalidateQueries({ queryKey: ['feed'] }),
+  });
+
   const canConnect = isInvestor && !item.is_connected && item.connection_status !== 'pending';
 
   return (
@@ -107,6 +152,7 @@ function FeedCard({ item, isActive, isMuted }: { item: FeedItem; isActive: boole
 
       {/* Right Actions */}
       <View style={feedStyles.rightActions}>
+        {/* Avatar → profile */}
         <TouchableOpacity
           style={feedStyles.actionItem}
           onPress={() =>
@@ -119,6 +165,23 @@ function FeedCard({ item, isActive, isMuted }: { item: FeedItem; isActive: boole
           </View>
         </TouchableOpacity>
 
+        {/* Like */}
+        {isInvestor && (
+          <TouchableOpacity
+            style={feedStyles.actionItem}
+            onPress={() => likeMutation.mutate()}
+            disabled={likeMutation.isPending}
+          >
+            <View style={[feedStyles.actionBtn, item.is_liked && feedStyles.actionBtnLiked]}>
+              <Ionicons name={item.is_liked ? 'heart' : 'heart-outline'} size={22} color="white" />
+            </View>
+            <Text style={feedStyles.actionLabel}>
+              {(item.likes_count ?? 0) > 0 ? item.likes_count : 'Like'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Connect */}
         {canConnect && (
           <TouchableOpacity
             style={feedStyles.actionItem}
@@ -343,7 +406,6 @@ const feedStyles = StyleSheet.create({
     right: 0,
     height: '60%',
   },
-  // Right action buttons
   rightActions: {
     position: 'absolute',
     right: 14,
@@ -362,6 +424,9 @@ const feedStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  actionBtnLiked: {
+    backgroundColor: '#E74C3C',
+  },
   actionLabel: {
     color: '#FFFFFF',
     fontSize: 11,
@@ -379,7 +444,6 @@ const feedStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Bottom info
   bottomInfo: {
     position: 'absolute',
     bottom: 88,
@@ -447,7 +511,6 @@ const feedStyles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 6,
   },
-  // HUD
   hud: {
     position: 'absolute',
     top: 0,

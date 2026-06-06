@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   ActivityIndicator, StyleSheet,
@@ -26,15 +26,12 @@ export default function ActivityScreen() {
   const insets    = useSafeAreaInsets();
   const router    = useRouter();
   const session   = useAuthStore((s) => s.session);
-  const profile   = useAuthStore((s) => s.profile);
   const setUnread = useUIStore((s) => s.setUnreadNotifications);
   const showToast = useUIStore((s) => s.showToast);
   const qc        = useQueryClient();
 
-  // Track which connection_ids the user has already responded to (local only)
   const [respondedIds, setRespondedIds] = useState<Set<string>>(new Set());
 
-  // ── Notifications + connection details in one query ──────────────────────
   const { data = { notifications: [] as Notification[], connMap: {} as Record<string, any> }, isLoading } = useQuery({
     queryKey: ['notifications-full', session?.user?.id],
     queryFn: async () => {
@@ -47,9 +44,12 @@ export default function ActivityScreen() {
 
       const notifications = (notifs ?? []) as Notification[];
 
-      // Batch-fetch connection info for connection_request notifications
+      // Batch-fetch connections for both request and accepted notifications
       const connIds = notifications
-        .filter((n) => n.type === 'connection_request' && (n.data as any)?.connection_id)
+        .filter((n) =>
+          (n.type === 'connection_request' || n.type === 'connection_accepted')
+          && (n.data as any)?.connection_id
+        )
         .map((n) => (n.data as any).connection_id as string);
 
       if (!connIds.length) return { notifications, connMap: {} };
@@ -58,11 +58,10 @@ export default function ActivityScreen() {
         .from('connections')
         .select(`
           id, investor_id, startup_id, status,
-          investor:profiles!connections_investor_id_fkey(full_name, avatar_url)
+          investor:profiles!connections_investor_id_fkey(id, full_name, avatar_url)
         `)
         .in('id', connIds);
 
-      // Fetch startup profiles for the startup_ids
       const startupIds = (conns ?? []).map((c) => c.startup_id).filter(Boolean);
       let spMap: Record<string, { company_name: string; logo_url: string | null }> = {};
       if (startupIds.length) {
@@ -115,7 +114,6 @@ export default function ActivityScreen() {
       qc.invalidateQueries({ queryKey: ['feed'] });
 
       if (vars.status === 'accepted') {
-        // Wait briefly for the trigger to create the conversation, then navigate
         setTimeout(async () => {
           const { data: conv } = await supabase
             .from('conversations')
@@ -134,6 +132,21 @@ export default function ActivityScreen() {
   useEffect(() => {
     setUnread(notifications.filter((n) => !n.read_at).length);
   }, [notifications]);
+
+  function handleNotifPress(item: Notification, conn: any | null) {
+    const d = item.data as any;
+    if ((item.type === 'connection_request' || item.type === 'connection_accepted') && conn?.investor_id) {
+      router.push({ pathname: '/modals/investor-detail', params: { id: conn.investor_id } } as any);
+      return;
+    }
+    if (item.type === 'pitch_viewed' && d?.actor_id) {
+      router.push({ pathname: '/modals/investor-detail', params: { id: d.actor_id } } as any);
+      return;
+    }
+    if (item.type === 'message' && d?.conversation_id) {
+      router.push({ pathname: '/modals/conversation', params: { id: d.conversation_id } } as any);
+    }
+  }
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]}>
@@ -165,39 +178,44 @@ export default function ActivityScreen() {
             const connId = (item.data as any)?.connection_id as string | undefined;
             const conn   = connId ? connMap[connId] : null;
             const isRequest = item.type === 'connection_request' && !!connId;
+            const isConnectionNotif = (item.type === 'connection_request' || item.type === 'connection_accepted') && !!connId;
             const hasResponded = !!connId && respondedIds.has(connId);
 
-            // Resolve requester info from connection
-            const isStartupUser = profile?.account_type === 'startup';
-            let requesterName   = '';
-            let requesterAvatar: string | null = null;
-            if (conn) {
-              if (isStartupUser) {
-                const inv = conn.investor as any;
-                requesterName   = inv?.full_name ?? 'An investor';
-                requesterAvatar = inv?.avatar_url ?? null;
-              } else {
-                const sp = conn.startupProfile;
-                requesterName   = sp?.company_name ?? 'A startup';
-                requesterAvatar = sp?.logo_url ?? null;
-              }
+            // Resolve actor info from connection
+            let actorName   = '';
+            let actorAvatar: string | null = null;
+            if (conn && isConnectionNotif) {
+              const inv = conn.investor as any;
+              actorName   = inv?.full_name ?? 'An investor';
+              actorAvatar = inv?.avatar_url ?? null;
             }
 
-            const displayBody = (isRequest && requesterName)
-              ? `${requesterName} wants to connect with you.`
+            const displayBody = isConnectionNotif && actorName
+              ? isRequest
+                ? `${actorName} wants to connect with you.`
+                : `${actorName} accepted your connection request.`
               : item.body;
 
+            // Determine if this notification has a tappable profile
+            const d = item.data as any;
+            const isNavigable = (isConnectionNotif && conn?.investor_id)
+              || (item.type === 'pitch_viewed' && d?.actor_id)
+              || (item.type === 'message' && d?.conversation_id);
+
             return (
-              <View style={[s.item, !item.read_at && s.itemUnread]}>
+              <TouchableOpacity
+                style={[s.item, !item.read_at && s.itemUnread]}
+                onPress={() => handleNotifPress(item, conn)}
+                activeOpacity={isNavigable ? 0.7 : 1}
+              >
                 {!item.read_at && <View style={s.unreadBar} />}
 
-                {/* Requester avatar (for connection requests) or icon */}
-                {isRequest && (requesterAvatar || requesterName) ? (
+                {/* Actor avatar (for connection notifications) or icon */}
+                {isConnectionNotif && (actorAvatar || actorName) ? (
                   <View style={s.avatarWrap}>
-                    {requesterAvatar
-                      ? <Image source={{ uri: requesterAvatar }} style={s.requesterAvatar} contentFit="cover" />
-                      : <Avatar uri={null} name={requesterName} size={40} />}
-                    {/* Mini icon badge */}
+                    {actorAvatar
+                      ? <Image source={{ uri: actorAvatar }} style={s.requesterAvatar} contentFit="cover" />
+                      : <Avatar uri={null} name={actorName} size={40} />}
                     <View style={[s.iconBadge, { backgroundColor: cfg.bg }]}>
                       <Ionicons name={cfg.name} size={11} color={cfg.color} />
                     </View>
@@ -217,8 +235,8 @@ export default function ActivityScreen() {
                   </View>
                   <Text style={s.itemBody} numberOfLines={2}>{displayBody}</Text>
 
-                  {/* Accept / Decline — only for connection_request, hidden once responded */}
-                  {isRequest && !hasResponded && (
+                  {/* Accept / Decline — only for pending connection requests */}
+                  {isRequest && !hasResponded && conn?.status === 'pending' && (
                     <View style={s.actions}>
                       <TouchableOpacity
                         style={s.acceptBtn}
@@ -241,8 +259,16 @@ export default function ActivityScreen() {
                   {isRequest && hasResponded && (
                     <Text style={s.respondedLabel}>Responded</Text>
                   )}
+
+                  {/* Navigate hint for tappable items */}
+                  {isNavigable && !isRequest && (
+                    <View style={s.viewProfileRow}>
+                      <Text style={s.viewProfileText}>View profile</Text>
+                      <Ionicons name="chevron-forward" size={12} color="#6DB882" />
+                    </View>
+                  )}
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           }}
         />
@@ -271,7 +297,6 @@ const s = StyleSheet.create({
   itemUnread:   { backgroundColor: '#F8FCF8' },
   unreadBar:    { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, backgroundColor: '#6DB882' },
 
-  // Icon variants
   iconBox:      { width: 38, height: 38, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   avatarWrap:   { position: 'relative', flexShrink: 0 },
   requesterAvatar:{ width: 40, height: 40, borderRadius: 20 },
@@ -292,4 +317,6 @@ const s = StyleSheet.create({
   declineBtn:   { borderWidth: 1, borderColor: '#DDE8DC', paddingHorizontal: 18, paddingVertical: 8, borderRadius: 6 },
   declineText:  { color: '#4A5C48', fontSize: 13, fontWeight: '500' },
   respondedLabel:{ fontSize: 12, color: '#7A9078', fontStyle: 'italic', marginTop: 8 },
+  viewProfileRow:{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 6 },
+  viewProfileText:{ fontSize: 12, color: '#6DB882', fontWeight: '600' },
 });

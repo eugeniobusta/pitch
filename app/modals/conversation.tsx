@@ -11,6 +11,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { haptic } from '@/lib/haptics';
+import { Avatar } from '@/components/ui/Avatar';
 
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -22,7 +23,6 @@ export default function ConversationScreen() {
   const [text, setText] = useState('');
   const listRef = useRef<FlatList>(null);
 
-  // Load conversation meta — resolve other party name for both types
   const { data: meta } = useQuery({
     queryKey: ['conversation-meta', id],
     queryFn: async () => {
@@ -30,10 +30,10 @@ export default function ConversationScreen() {
         .from('conversations')
         .select(`
           id, investor_id, startup_id, connection_id,
-          investor_user:profiles!conversations_investor_id_fkey(full_name),
+          investor_user:profiles!conversations_investor_id_fkey(id, full_name, avatar_url),
           connection:connections(
-            investor:profiles!connections_investor_id_fkey(full_name),
-            startup:startup_profiles(company_name)
+            investor:profiles!connections_investor_id_fkey(full_name, avatar_url),
+            startup:startup_profiles(company_name, logo_url)
           )
         `)
         .eq('id', id!)
@@ -41,18 +41,20 @@ export default function ConversationScreen() {
 
       if (!data) return null;
 
-      // For direct convos, fetch startup company name separately
+      // For direct convos (no connection), fetch startup info separately
       let startupName: string | null = null;
+      let startupLogoUrl: string | null = null;
       if (!data.connection_id && data.startup_id) {
         const { data: sp } = await supabase
           .from('startup_profiles')
-          .select('company_name')
+          .select('company_name, logo_url')
           .eq('profile_id', data.startup_id)
           .single();
         startupName = sp?.company_name ?? null;
+        startupLogoUrl = sp?.logo_url ?? null;
       }
 
-      return { ...data, startupName };
+      return { ...data, startupName, startupLogoUrl };
     },
     enabled: !!id,
   });
@@ -110,22 +112,48 @@ export default function ConversationScreen() {
     }
   }, [messages.length]);
 
-  // Resolve other party's display name
+  // Resolve other party info
   const isInvestor = profile?.account_type === 'investor';
   const isDirect   = meta && !meta.connection_id;
   const conn       = (meta?.connection as any);
   const invUser    = (meta?.investor_user as any);
 
-  let otherName = '...';
-  let subLabel  = 'Loading…';
+  let otherName       = '...';
+  let subLabel        = 'Loading…';
+  let otherAvatar: string | null = null;
+  let otherProfileId: string | null = null;
+
   if (meta) {
     if (isDirect) {
-      otherName = isInvestor ? (meta.startupName ?? 'Startup') : invUser?.full_name ?? 'Investor';
-      subLabel  = 'Direct message';
+      if (isInvestor) {
+        otherName     = (meta as any).startupName ?? 'Startup';
+        otherAvatar   = (meta as any).startupLogoUrl ?? null;
+        otherProfileId = meta.startup_id ?? null;
+      } else {
+        otherName     = invUser?.full_name ?? 'Investor';
+        otherAvatar   = invUser?.avatar_url ?? null;
+        otherProfileId = meta.investor_id ?? null;
+      }
+      subLabel = 'Direct message';
     } else {
-      otherName = isInvestor ? conn?.startup?.company_name ?? '…' : conn?.investor?.full_name ?? '…';
-      subLabel  = 'Connection';
+      if (isInvestor) {
+        otherName     = conn?.startup?.company_name ?? '…';
+        otherAvatar   = conn?.startup?.logo_url ?? null;
+        otherProfileId = meta.startup_id ?? null;
+      } else {
+        otherName     = conn?.investor?.full_name ?? '…';
+        otherAvatar   = conn?.investor?.avatar_url ?? null;
+        otherProfileId = meta.investor_id ?? null;
+      }
+      subLabel = 'Connection';
     }
+  }
+
+  const otherProfilePath = isInvestor ? '/modals/startup-detail' : '/modals/investor-detail';
+
+  function navigateToProfile() {
+    if (!otherProfileId) return;
+    router.push({ pathname: otherProfilePath, params: { id: otherProfileId } } as any);
   }
 
   return (
@@ -139,17 +167,29 @@ export default function ConversationScreen() {
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#2E4820" />
         </TouchableOpacity>
-        <View style={s.headerText}>
-          <Text style={s.headerName}>{otherName}</Text>
-          <View style={s.subRow}>
-            {isDirect && (
-              <View style={s.dmBadge}>
-                <Text style={s.dmBadgeText}>DM</Text>
-              </View>
-            )}
-            <Text style={s.headerSub}>{subLabel}</Text>
+
+        <TouchableOpacity
+          style={s.headerContent}
+          onPress={navigateToProfile}
+          disabled={!otherProfileId}
+          activeOpacity={0.7}
+        >
+          <Avatar uri={otherAvatar} name={otherName} size={36} />
+          <View style={s.headerText}>
+            <Text style={s.headerName}>{otherName}</Text>
+            <View style={s.subRow}>
+              {isDirect && (
+                <View style={s.dmBadge}>
+                  <Text style={s.dmBadgeText}>DM</Text>
+                </View>
+              )}
+              <Text style={s.headerSub}>{subLabel}</Text>
+            </View>
           </View>
-        </View>
+          {otherProfileId && (
+            <Ionicons name="chevron-forward" size={14} color="#CCCCCC" />
+          )}
+        </TouchableOpacity>
       </View>
 
       {isLoading ? (
@@ -216,11 +256,15 @@ const s = StyleSheet.create({
   container:      { flex: 1, backgroundColor: '#FFFFFF' },
   header: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF',
-    borderBottomWidth: 1, borderBottomColor: '#EBEBEB', paddingHorizontal: 12, paddingBottom: 12, gap: 8,
+    borderBottomWidth: 1, borderBottomColor: '#EBEBEB',
+    paddingHorizontal: 12, paddingBottom: 12, gap: 8,
   },
   backBtn:        { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
+  headerContent: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
+  },
   headerText:     { flex: 1 },
-  headerName:     { fontSize: 16, fontWeight: '700', color: '#1A1A1A' },
+  headerName:     { fontSize: 15, fontWeight: '700', color: '#1A1A1A' },
   subRow:         { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 },
   dmBadge:        {
     backgroundColor: '#E8F5EE', borderWidth: 1, borderColor: '#6DB882',
