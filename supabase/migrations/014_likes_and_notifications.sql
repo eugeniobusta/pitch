@@ -92,6 +92,7 @@ CREATE TRIGGER on_pitch_view_notify
   FOR EACH ROW EXECUTE FUNCTION public.handle_pitch_view_notify();
 
 -- 5. Update get_personalized_feed to include likes_count and is_liked
+DROP FUNCTION IF EXISTS get_personalized_feed(uuid,integer,integer);
 CREATE OR REPLACE FUNCTION get_personalized_feed(
   p_investor_id UUID,
   p_limit       INTEGER DEFAULT 20,
